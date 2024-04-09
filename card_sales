@@ -1,0 +1,190 @@
+-- Create sample tables
+
+-- Table for Pokemon card sets
+CREATE TABLE pokemon_sets (
+    set_id SERIAL PRIMARY KEY,  -- Unique identifier for each set
+    set_name VARCHAR(100),      -- Name of the Pokemon card set
+    release_date DATE           -- Release date of the set
+);
+
+-- Table for Pokemon cards
+CREATE TABLE pokemon_cards (
+    card_id SERIAL PRIMARY KEY,  -- Unique identifier for each card
+    card_name VARCHAR(100),       -- Name of the Pokemon card
+    rarity VARCHAR(50),           -- Rarity level of the card
+    type VARCHAR(50),             -- Type of Pokemon
+    price DECIMAL(10, 2),         -- Price of the card
+    set_id INT,                   -- Foreign key referencing the set it belongs to
+    FOREIGN KEY (set_id) REFERENCES pokemon_sets(set_id)
+);
+
+-- Table for recording card sales
+CREATE TABLE card_sales (
+    sale_id SERIAL PRIMARY KEY,  -- Unique identifier for each sale
+    card_id INT,                  -- Foreign key referencing the sold card
+    sale_date DATE,               -- Date of the sale
+    quantity INT,                 -- Quantity of cards sold
+    total_amount DECIMAL(10, 2),  -- Total amount of the sale
+    FOREIGN KEY (card_id) REFERENCES pokemon_cards(card_id)
+);
+
+-- Insert sample data into tables
+
+-- Insert sample data into the pokemon_sets table
+INSERT INTO pokemon_sets (set_name, release_date) VALUES
+('Base Set', '1999-01-09'),
+('Jungle', '1999-06-16'),
+('Fossil', '1999-10-10'),
+('Team Rocket', '2000-04-24'),
+('Neo Genesis', '2000-12-16');
+
+-- Insert sample data into the pokemon_cards table
+INSERT INTO pokemon_cards (card_name, rarity, type, price, set_id) VALUES
+('Charizard', 'Rare Holo', 'Fire', 500.00, 1),
+('Pikachu', 'Common', 'Electric', 20.00, 1),
+('Mewtwo', 'Rare Holo', 'Psychic', 300.00, 1),
+('Blastoise', 'Rare Holo', 'Water', 400.00, 1),
+('Rayquaza', 'Rare Holo', 'Dragon', 250.00, 1),
+('Scyther', 'Rare Holo', 'Grass', 150.00, 2),
+('Vaporeon', 'Rare Holo', 'Water', 200.00, 2),
+('Ditto', 'Rare Holo', 'Normal', 180.00, 3),
+('Dark Charizard', 'Rare Holo', 'Fire', 350.00, 4),
+('Tyranitar', 'Rare Holo', 'Dark', 280.00, 4),
+('Entei', 'Rare Holo', 'Fire', 220.00, 4),
+('Lugia', 'Rare Holo', 'Psychic', 450.00, 5),
+('Ho-Oh', 'Rare Holo', 'Fire', 400.00, 5),
+('Pichu', 'Common', 'Electric', 25.00, 5);
+
+-- Insert sample data into the card_sales table
+INSERT INTO card_sales (card_id, sale_date, quantity, total_amount) VALUES
+(1, '2024-04-01', 3, 1500.00),
+(2, '2024-04-02', 5, 100.00),
+(3, '2024-04-03', 2, 600.00),
+(4, '2024-04-04', 1, 400.00),
+(5, '2024-04-05', 4, 1000.00),
+(6, '2024-04-06', 2, 300.00),
+(7, '2024-04-07', 3, 600.00),
+(8, '2024-04-08', 1, 180.00),
+(9, '2024-04-09', 2, 700.00),
+(10, '2024-04-10', 1, 280.00),
+(11, '2024-04-11', 3, 660.00),
+(12, '2024-04-12', 2, 440.00),
+(13, '2024-04-13', 5, 2250.00),
+(14, '2024-04-14', 2, 800.00);
+
+-- Advanced SQL Queries
+
+-- 1. Retrieve the total sales amount for each card type and rarity
+SELECT 
+    type,
+    rarity,
+    SUM(total_amount) AS total_sales_amount
+FROM 
+    pokemon_cards
+JOIN 
+    card_sales ON pokemon_cards.card_id = card_sales.card_id
+GROUP BY 
+    type, rarity
+ORDER BY 
+    total_sales_amount DESC;
+
+-- 2. Retrieve the top-selling card in each set
+WITH ranked_cards AS (
+    SELECT 
+        card_name,
+        set_name,
+        ROW_NUMBER() OVER (PARTITION BY set_name ORDER BY SUM(quantity) DESC) AS rank
+    FROM 
+        pokemon_cards
+    JOIN 
+        pokemon_sets ON pokemon_cards.set_id = pokemon_sets.set_id
+    JOIN 
+        card_sales ON pokemon_cards.card_id = card_sales.card_id
+    GROUP BY 
+        card_name, set_name
+)
+SELECT 
+    set_name,
+    card_name AS top_selling_card
+FROM 
+    ranked_cards
+WHERE 
+    rank = 1;
+
+-- 3. Retrieve the monthly sales trend for each card rarity
+WITH monthly_sales AS (
+    SELECT 
+        DATE_TRUNC('month', sale_date) AS sale_month,
+        rarity,
+        SUM(total_amount) AS monthly_sales_amount
+    FROM 
+        pokemon_cards
+    JOIN 
+        card_sales ON pokemon_cards.card_id = card_sales.card_id
+    GROUP BY 
+        sale_month, rarity
+)
+SELECT 
+    sale_month,
+    rarity,
+    COALESCE(monthly_sales_amount, 0) AS monthly_sales_amount
+FROM 
+    (SELECT DISTINCT sale_month FROM monthly_sales) months
+CROSS JOIN 
+    (SELECT DISTINCT rarity FROM monthly_sales) rarities
+LEFT JOIN 
+    monthly_sales ON months.sale_month = monthly_sales.sale_month AND rarities.rarity = monthly_sales.rarity
+ORDER BY 
+    sale_month, rarity;
+
+-- 4. Retrieve cards with sales greater than the average sales quantity per set
+WITH avg_sales_per_set AS (
+    SELECT 
+        set_id,
+        AVG(quantity) AS avg_quantity_per_set
+    FROM 
+        pokemon_cards
+    JOIN 
+        card_sales ON pokemon_cards.card_id = card_sales.card_id
+    GROUP BY 
+        set_id
+)
+SELECT 
+    pokemon_cards.card_name,
+    card_sales.quantity,
+    pokemon_sets.set_name
+FROM 
+    pokemon_cards
+JOIN 
+    card_sales ON pokemon_cards.card_id = card_sales.card_id
+JOIN 
+    pokemon_sets ON pokemon_cards.set_id = pokemon_sets.set_id
+JOIN 
+    avg_sales_per_set ON pokemon_cards.set_id = avg_sales_per_set.set_id
+WHERE 
+    card_sales.quantity > avg_sales_per_set.avg_quantity_per_set;
+
+-- 5. Retrieve cards with sales less than the median sales quantity per set
+WITH median_sales_per_set AS (
+    SELECT 
+        set_id,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY quantity) OVER (PARTITION BY set_id) AS median_quantity_per_set
+    FROM 
+        pokemon_cards
+    JOIN 
+        card_sales ON pokemon_cards.card_id = card_sales.card_id
+)
+SELECT 
+    pokemon_cards.card_name,
+    card_sales.quantity,
+    pokemon_sets.set_name
+FROM 
+    pokemon_cards
+JOIN 
+    card_sales ON pokemon_cards.card_id = card_sales.card_id
+JOIN 
+    pokemon_sets ON pokemon_cards.set_id = pokemon_sets.set_id
+JOIN 
+    median_sales_per_set ON pokemon_cards.set_id = median_sales_per_set.set_id
+WHERE 
+    card_sales.quantity < median_sales_per_set.median_quantity_per_set;
